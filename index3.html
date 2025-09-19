@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Seguridad Minera 2D: La Travesía</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #0f172a; /* slate-900 */
+            overflow: hidden;
+        }
+        .game-world {
+            position: relative;
+            width: 100%;
+            height: 400px;
+            background: linear-gradient(#1e293b, #475569);
+            border-bottom: 10px solid #4a3728;
+            overflow: hidden;
+            transition: background 2s ease;
+        }
+        /* Zonas */
+        .zone-0 { background: linear-gradient(to top, #6b7280, #d1d5db); border-bottom-color: #a16207; } /* Campamento */
+        .zone-1 { background: linear-gradient(to top, #78716c, #a8a29e); border-bottom-color: #57534e; } /* Bocamina */
+        .zone-2 { background: linear-gradient(to top, #44403c, #57534e); border-bottom-color: #44403c; } /* Túnel */
+        .zone-3 { background: linear-gradient(to top, #292524, #44403c); border-bottom-color: #292524; } /* Profundidad */
+
+        #character {
+            position: absolute;
+            bottom: 10px;
+            left: 100px;
+            width: 50px;
+            height: 100px;
+            transition: transform 0.5s;
+        }
+        .character-part { position: absolute; background-color: #333; }
+        .head { width: 30px; height: 30px; left: 10px; top: 0; border-radius: 50%; background-color: #fcd3a7; }
+        .torso { width: 30px; height: 40px; left: 10px; top: 30px; }
+        .arm { width: 10px; height: 35px; top: 32px; transform-origin: top center; }
+        .leg { width: 12px; height: 40px; top: 70px; transform-origin: top center; }
+        .arm.left { left: 0; }
+        .arm.right { left: 30px; }
+        .leg.left { left: 8px; }
+        .leg.right { left: 20px; }
+        
+        /* Ropa del Personaje */
+        .male .torso { background-color: #1e3a8a; } /* dark blue */
+        .male .leg { background-color: #4b5563; } /* gray */
+        .female .torso { background-color: #db2777; } /* pink */
+        .female .leg { background-color: #4b5563; } /* gray */
+        
+        /* Animación de caminar */
+        .walking .arm.left { animation: walk-arm1 1s infinite ease-in-out; }
+        .walking .arm.right { animation: walk-arm2 1s infinite ease-in-out; }
+        .walking .leg.left { animation: walk-leg1 1s infinite ease-in-out; }
+        .walking .leg.right { animation: walk-leg2 1s infinite ease-in-out; }
+        @keyframes walk-arm1 { 0%, 100% { transform: rotate(20deg); } 50% { transform: rotate(-20deg); } }
+        @keyframes walk-arm2 { 0%, 100% { transform: rotate(-20deg); } 50% { transform: rotate(20deg); } }
+        @keyframes walk-leg1 { 0%, 100% { transform: rotate(30deg); } 50% { transform: rotate(-30deg); } }
+        @keyframes walk-leg2 { 0%, 100% { transform: rotate(-30deg); } 50% { transform: rotate(30deg); } }
+        
+        /* Animación de accidente */
+        .fallen { transform: translateY(80px) rotate(90deg); }
+        
+        /* UI */
+        .epp-item { transition: all 0.2s; }
+        .epp-item.selected { border-color: #f59e0b; background-color: #4338ca; transform: scale(1.05); }
+        .notification {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            padding: 10px 20px; border-radius: 8px; font-size: 1.25rem; font-weight: bold;
+            color: white; z-index: 10;
+            animation: fadeInOut 4s forwards;
+        }
+        @keyframes fadeInOut {
+            0%, 100% { opacity: 0; transform: translate(-50%, -20px); }
+            10%, 90% { opacity: 1; transform: translate(-50%, 0); }
+        }
+        .cert-container { background: white; color: #333; padding: 40px; border: 10px solid #c0c0c0; text-align: center; }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen text-white">
+
+    <div id="game-container" class="w-full max-w-4xl bg-slate-800 rounded-lg shadow-2xl p-6">
+
+        <!-- Pantalla de Inicio -->
+        <div id="start-screen">
+            <h1 class="text-3xl font-bold text-amber-400 mb-4 text-center">Seguridad Minera 2D: La Travesía</h1>
+            <p class="text-center mb-6">Elige tu personaje para comenzar el entrenamiento.</p>
+            <div class="flex justify-center gap-8">
+                <button class="character-choice" data-gender="male">
+                    <div class="text-6xl">👨‍🔧</div><p>Masculino</p>
+                </button>
+                <button class="character-choice" data-gender="female">
+                    <div class="text-6xl">👩‍🔧</div><p>Femenino</p>
+                </button>
+            </div>
+        </div>
+
+        <!-- Pantalla de Selección de EPP -->
+        <div id="epp-screen" class="hidden">
+            <h2 class="text-2xl font-bold text-amber-400 mb-2 text-center">Prepara tu Equipo de Protección</h2>
+            <p class="text-center mb-6">Selecciona TODOS los EPP que llevarás a la mina. Tu vida dependerá de ello.</p>
+            <div id="epp-options" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6"></div>
+            <div class="text-center">
+                <button id="start-journey-button" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-lg text-xl">Comenzar Travesía</button>
+            </div>
+        </div>
+        
+        <!-- Pantalla de Juego -->
+        <div id="game-screen" class="hidden">
+            <div class="game-world" id="game-world">
+                <div id="character">
+                    <div class="character-part head"></div>
+                    <div class="character-part torso"></div>
+                    <div class="character-part arm left"></div>
+                    <div class="character-part arm right"></div>
+                    <div class="character-part leg left"></div>
+                    <div class="character-part leg right"></div>
+                </div>
+                <div id="notification-area"></div>
+            </div>
+            <div class="bg-slate-900 p-2 mt-2 rounded-b-lg flex justify-between">
+                <div>Zona Actual: <span id="zone-name" class="font-bold"></span></div>
+                <div>Tiempo Restante: <span id="zone-timer" class="font-bold"></span>s</div>
+            </div>
+        </div>
+
+        <!-- Pantalla de Game Over -->
+        <div id="game-over-screen" class="hidden text-center">
+            <h1 class="text-4xl font-bold text-red-500 mb-4">MISIÓN FALLIDA</h1>
+            <p id="failure-reason" class="text-xl mb-6"></p>
+            <p class="mb-8">La seguridad es la prioridad #1. Prepárate mejor la próxima vez.</p>
+            <button id="restart-button" class="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold py-3 px-8 rounded-lg text-xl">Reintentar Misión</button>
+        </div>
+        
+        <!-- Pantalla de Victoria -->
+        <div id="win-screen" class="hidden text-center">
+             <div class="cert-container">
+                <div class="flex justify-center items-center gap-4 mb-4">
+                     <svg class="w-16 h-16 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+                     <h1 class="text-2xl font-bold">Mina Segura Corp.</h1>
+                </div>
+                <h2 class="text-4xl font-bold mb-4 text-green-600">CERTIFICADO DE FINALIZACIÓN</h2>
+                <p class="text-lg">Se certifica que:</p>
+                <p id="cert-name" class="text-3xl font-cursive my-4 border-b-2 border-gray-400 pb-2">...</p>
+                <p class="text-lg">ha completado exitosamente el entrenamiento de seguridad en EPP.</p>
+                <p class="mt-6">Fecha: <span id="cert-date"></span></p>
+             </div>
+             <p class="text-slate-300 mt-4">Ingresa tu nombre para el certificado:</p>
+             <input type="text" id="name-input" class="text-black text-center p-2 rounded mt-2" placeholder="Tu Nombre Aquí">
+            <button id="play-again-button" class="mt-8 bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold py-3 px-8 rounded-lg text-xl">Jugar de Nuevo</button>
+        </div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // --- CONFIGURACIÓN DEL JUEGO (Simulando el archivo Excel) ---
+        const EPP_DATA = [
+            { id: 'casco', name: 'Casco de Seguridad', icon: '👷' },
+            { id: 'botas', name: 'Botas de Seguridad', icon: '🥾' },
+            { id: 'lentes', name: 'Lentes de Seguridad', icon: '👓' },
+            { id: 'guantes', name: 'Guantes de Alta Resistencia', icon: '🧤' },
+            { id: 'respirador', name: 'Respirador para Polvo', icon: '😷' },
+            { id: 'auditiva', name: 'Protección Auditiva', icon: '🎧' },
+            { id: 'visibilidad', name: 'Ropa de Alta Visibilidad', icon: '🦺' },
+        ];
+        const ZONES_DATA = [
+            { id: 0, name: "Campamento", duration: 5, eventChance: 0 },
+            { id: 1, name: "Entrada a la Mina", duration: 10, eventChance: 0.3 },
+            { id: 2, name: "Túnel Principal", duration: 10, eventChance: 0.5 },
+            { id: 3, name: "Frente de Perforación", duration: 10, eventChance: 0.7 },
+        ];
+        const EVENTS_DATA = [
+            { name: "Desprendimiento de Roca", requiredEPP: 'casco', zones: [2, 3] },
+            { name: "Proyección de Partículas", requiredEPP: 'lentes', zones: [2, 3] },
+            { name: "Piso Resbaladizo", requiredEPP: 'botas', zones: [1, 2] },
+            { name: "Ruido de Maquinaria", requiredEPP: 'auditiva', zones: [3] },
+            { name: "Nube de Polvo", requiredEPP: 'respirador', zones: [3] },
+            { name: "Paso de Vehículo Pesado", requiredEPP: 'visibilidad', zones: [1,2] },
+        ];
+
+        // --- ESTADO DEL JUEGO ---
+        let gameState = 'start';
+        let selectedGender = 'male';
+        let selectedEPPs = new Set();
+        let currentZoneIndex = 0;
+        let zoneTimeLeft = 0;
+        let gameInterval = null;
+        let eventActive = false;
+
+        // --- ELEMENTOS DEL DOM ---
+        const screens = {
+            start: document.getElementById('start-screen'),
+            epp: document.getElementById('epp-screen'),
+            game: document.getElementById('game-screen'),
+            gameOver: document.getElementById('game-over-screen'),
+            win: document.getElementById('win-screen'),
+        };
+        const character = document.getElementById('character');
+        const gameWorld = document.getElementById('game-world');
+        const eppOptionsContainer = document.getElementById('epp-options');
+        const notificationArea = document.getElementById('notification-area');
+        const zoneNameEl = document.getElementById('zone-name');
+        const zoneTimerEl = document.getElementById('zone-timer');
+        const failureReasonEl = document.getElementById('failure-reason');
+        const certNameEl = document.getElementById('cert-name');
+        const certDateEl = document.getElementById('cert-date');
+        const nameInput = document.getElementById('name-input');
+        
+        // --- FUNCIONES DE LÓGICA ---
+        const showScreen = (screenName) => Object.values(screens).forEach(s => s.classList.add('hidden')) || screens[screenName].classList.remove('hidden');
+
+        const selectCharacter = (gender) => {
+            selectedGender = gender;
+            character.className = ''; // Limpiar clases
+            character.classList.add(selectedGender);
+            setupEPPSelection();
+            showScreen('epp');
+        };
+
+        const setupEPPSelection = () => {
+            eppOptionsContainer.innerHTML = '';
+            EPP_DATA.forEach(epp => {
+                const item = document.createElement('div');
+                item.className = 'epp-item cursor-pointer bg-slate-700 p-4 rounded-lg border-2 border-slate-600 flex flex-col items-center justify-center';
+                item.dataset.eppId = epp.id;
+                item.innerHTML = `<div class="text-4xl mb-2">${epp.icon}</div><p class="font-semibold text-center">${epp.name}</p>`;
+                item.addEventListener('click', () => toggleEPP(epp.id, item));
+                eppOptionsContainer.appendChild(item);
+            });
+        };
+
+        const toggleEPP = (eppId, element) => {
+            if (selectedEPPs.has(eppId)) {
+                selectedEPPs.delete(eppId);
+                element.classList.remove('selected');
+            } else {
+                selectedEPPs.add(eppId);
+                element.classList.add('selected');
+            }
+        };
+
+        const startGame = () => {
+            if (selectedEPPs.size === 0) {
+                alert("Debes seleccionar al menos un EPP para comenzar.");
+                return;
+            }
+            currentZoneIndex = 0;
+            eventActive = false;
+            character.classList.remove('fallen');
+            showScreen('game');
+            loadZone();
+            gameInterval = setInterval(gameLoop, 1000);
+        };
+        
+        const loadZone = () => {
+             if (currentZoneIndex >= ZONES_DATA.length) {
+                winGame();
+                return;
+            }
+            const zone = ZONES_DATA[currentZoneIndex];
+            zoneTimeLeft = zone.duration;
+            zoneNameEl.textContent = zone.name;
+            gameWorld.className = 'game-world'; // Reset
+            gameWorld.classList.add(`zone-${zone.id}`);
+            character.classList.add('walking');
+        };
+
+        const gameLoop = () => {
+            if (gameState !== 'playing') return;
+            zoneTimeLeft--;
+            zoneTimerEl.textContent = zoneTimeLeft;
+
+            if (zoneTimeLeft <= 0) {
+                currentZoneIndex++;
+                loadZone();
+                return;
+            }
+
+            if (!eventActive) {
+                tryTriggerEvent();
+            }
+        };
+
+        const tryTriggerEvent = () => {
+            const zone = ZONES_DATA[currentZoneIndex];
+            if (Math.random() < zone.eventChance) {
+                const possibleEvents = EVENTS_DATA.filter(e => e.zones.includes(zone.id));
+                if (possibleEvents.length > 0) {
+                    const event = possibleEvents[Math.floor(Math.random() * possibleEvents.length)];
+                    triggerEvent(event);
+                }
+            }
+        };
+        
+        const triggerEvent = (event) => {
+            eventActive = true;
+            showNotification(event.name, '#f97316'); // orange-500
+            
+            setTimeout(() => {
+                if (selectedEPPs.has(event.requiredEPP)) {
+                    showNotification('¡Evento Completado!', '#22c55e'); // green-500
+                    eventActive = false;
+                } else {
+                    failGame(event);
+                }
+            }, 2000);
+        };
+        
+        const showNotification = (text, color) => {
+            notificationArea.innerHTML = ''; // Clear previous
+            const notif = document.createElement('div');
+            notif.className = 'notification';
+            notif.textContent = text;
+            notif.style.backgroundColor = color;
+            notificationArea.appendChild(notif);
+        };
+
+        const failGame = (failedEvent) => {
+            gameState = 'gameover';
+            clearInterval(gameInterval);
+            character.classList.remove('walking');
+            character.classList.add('fallen');
+            const requiredEPPName = EPP_DATA.find(e => e.id === failedEvent.requiredEPP).name;
+            failureReasonEl.textContent = `No superaste el evento '${failedEvent.name}' porque no tenías el EPP requerido: ${requiredEPPName}.`;
+            setTimeout(() => showScreen('gameOver'), 1500);
+        };
+
+        const winGame = () => {
+             gameState = 'win';
+             clearInterval(gameInterval);
+             character.classList.remove('walking');
+             certDateEl.textContent = new Date().toLocaleDateString('es-ES');
+             showScreen('win');
+        };
+
+        const resetGame = () => {
+            gameState = 'start';
+            selectedEPPs.clear();
+            showScreen('start');
+        }
+
+        // --- EVENT LISTENERS ---
+        document.querySelectorAll('.character-choice').forEach(btn => 
+            btn.addEventListener('click', () => selectCharacter(btn.dataset.gender))
+        );
+        document.getElementById('start-journey-button').addEventListener('click', () => {
+            gameState = 'playing';
+            startGame();
+        });
+        document.getElementById('restart-button').addEventListener('click', resetGame);
+        document.getElementById('play-again-button').addEventListener('click', resetGame);
+        nameInput.addEventListener('input', (e) => {
+            certNameEl.textContent = e.target.value || "...";
+        });
+    });
+    </script>
+</body>
+</html>
+
