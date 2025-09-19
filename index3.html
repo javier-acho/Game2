@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Seguridad Minera 2D: La Travesía</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
     <style>
         body {
@@ -36,10 +37,10 @@
             transition: transform 0.5s;
         }
         .character-part { position: absolute; background-color: #333; }
-        .head { width: 30px; height: 30px; left: 10px; top: 0; border-radius: 50%; background-color: #fcd3a7; }
-        .torso { width: 30px; height: 40px; left: 10px; top: 30px; }
-        .arm { width: 10px; height: 35px; top: 32px; transform-origin: top center; }
-        .leg { width: 12px; height: 40px; top: 70px; transform-origin: top center; }
+        .head { width: 30px; height: 30px; left: 10px; top: 0; border-radius: 50%; background-color: #fcd3a7; z-index: 2; }
+        .torso { width: 30px; height: 40px; left: 10px; top: 30px; z-index: 1; }
+        .arm { width: 10px; height: 35px; top: 32px; transform-origin: top center; z-index: 0; }
+        .leg { width: 12px; height: 40px; top: 70px; transform-origin: top center; z-index: 0; }
         .arm.left { left: 0; }
         .arm.right { left: 30px; }
         .leg.left { left: 8px; }
@@ -64,14 +65,43 @@
         /* Animación de accidente */
         .fallen { transform: translateY(80px) rotate(90deg); }
         
+        /* EPPs visuales sobre el personaje */
+        #char-epp-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        .epp-on-char { position: absolute; }
+        .epp-on-char.casco { width: 32px; height: 16px; background: #f59e0b; top: -6px; left: 9px; border-radius: 15px 15px 0 0; z-index: 3; }
+        .epp-on-char.lentes { width: 34px; height: 10px; background: #1f2937; top: 10px; left: 8px; border: 2px solid #9ca3af; z-index: 3; }
+        .epp-on-char.respirador { width: 20px; height: 15px; background: #9ca3af; top: 20px; left: 15px; border-radius: 0 0 5px 5px; z-index: 3; }
+        .epp-on-char.auditiva { width: 10px; height: 10px; background: #16a34a; border-radius: 50%; top: 10px; z-index: 3; }
+        .epp-on-char.auditiva.left { left: 5px; }
+        .epp-on-char.auditiva.right { left: 35px; }
+        .epp-on-char.visibilidad { width: 30px; height: 40px; background: #f97316; top: 30px; left: 10px; opacity: 0.8; z-index: 2; }
+        .epp-on-char.botas { width: 14px; height: 10px; background: #ca8a04; bottom: 0; z-index: 1; }
+        .epp-on-char.botas.left { left: 7px; }
+        .epp-on-char.botas.right { left: 19px; }
+
+        /* Event Visualization Styles */
+        #event-visualization-area {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; justify-content: center; align-items: flex-start;
+            padding-top: 50px; pointer-events: none; z-index: 5;
+        }
+        .event-icon {
+            font-size: 8rem; opacity: 0; animation: event-fall-down 2s forwards ease-in;
+            text-shadow: 0 5px 15px rgba(0,0,0,0.4);
+        }
+        @keyframes event-fall-down {
+            0% { transform: translateY(-100px) scale(0.5); opacity: 0; }
+            50% { transform: translateY(0) scale(1.1); opacity: 1; }
+            100% { transform: translateY(50px) scale(1); opacity: 0; }
+        }
+
         /* UI */
         .epp-item { transition: all 0.2s; }
         .epp-item.selected { border-color: #f59e0b; background-color: #4338ca; transform: scale(1.05); }
         .notification {
             position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
             padding: 10px 20px; border-radius: 8px; font-size: 1.25rem; font-weight: bold;
-            color: white; z-index: 10;
-            animation: fadeInOut 4s forwards;
+            color: white; z-index: 10; animation: fadeInOut 4s forwards;
         }
         @keyframes fadeInOut {
             0%, 100% { opacity: 0; transform: translate(-50%, -20px); }
@@ -118,8 +148,13 @@
                     <div class="character-part arm right"></div>
                     <div class="character-part leg left"></div>
                     <div class="character-part leg right"></div>
+                    <!-- Contenedor para EPPs visuales -->
+                    <div id="char-epp-container"></div>
                 </div>
+                <div id="event-visualization-area"></div>
                 <div id="notification-area"></div>
+                 <!-- UI para EPPs seleccionados -->
+                <div id="selected-epps-ui" class="absolute top-4 left-4 z-20 flex flex-col gap-2"></div>
             </div>
             <div class="bg-slate-900 p-2 mt-2 rounded-b-lg flex justify-between">
                 <div>Zona Actual: <span id="zone-name" class="font-bold"></span></div>
@@ -150,7 +185,10 @@
              </div>
              <p class="text-slate-300 mt-4">Ingresa tu nombre para el certificado:</p>
              <input type="text" id="name-input" class="text-black text-center p-2 rounded mt-2" placeholder="Tu Nombre Aquí">
-            <button id="play-again-button" class="mt-8 bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold py-3 px-8 rounded-lg text-xl">Jugar de Nuevo</button>
+             <div class="flex justify-center gap-4 mt-8">
+                <button id="download-cert-button" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-lg text-xl">Descargar Certificado</button>
+                <button id="play-again-button" class="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold py-3 px-8 rounded-lg text-xl">Jugar de Nuevo</button>
+            </div>
         </div>
     </div>
 
@@ -173,12 +211,12 @@
             { id: 3, name: "Frente de Perforación", duration: 10, eventChance: 0.7 },
         ];
         const EVENTS_DATA = [
-            { name: "Desprendimiento de Roca", requiredEPP: 'casco', zones: [2, 3] },
-            { name: "Proyección de Partículas", requiredEPP: 'lentes', zones: [2, 3] },
-            { name: "Piso Resbaladizo", requiredEPP: 'botas', zones: [1, 2] },
-            { name: "Ruido de Maquinaria", requiredEPP: 'auditiva', zones: [3] },
-            { name: "Nube de Polvo", requiredEPP: 'respirador', zones: [3] },
-            { name: "Paso de Vehículo Pesado", requiredEPP: 'visibilidad', zones: [1,2] },
+            { name: "Desprendimiento de Roca", requiredEPP: 'casco', zones: [2, 3], icon: '🪨' },
+            { name: "Proyección de Partículas", requiredEPP: 'lentes', zones: [2, 3], icon: '✨' },
+            { name: "Piso Resbaladizo", requiredEPP: 'botas', zones: [1, 2], icon: '💧' },
+            { name: "Ruido de Maquinaria", requiredEPP: 'auditiva', zones: [3], icon: '🔊' },
+            { name: "Nube de Polvo", requiredEPP: 'respirador', zones: [3], icon: '💨' },
+            { name: "Paso de Vehículo Pesado", requiredEPP: 'visibilidad', zones: [1,2], icon: '🚚' },
         ];
 
         // --- ESTADO DEL JUEGO ---
@@ -199,8 +237,10 @@
             win: document.getElementById('win-screen'),
         };
         const character = document.getElementById('character');
-        const gameWorld = document.getElementById('game-world');
+        const charEppContainer = document.getElementById('char-epp-container');
+        const selectedEppsUI = document.getElementById('selected-epps-ui');
         const eppOptionsContainer = document.getElementById('epp-options');
+        const eventVisualizationArea = document.getElementById('event-visualization-area');
         const notificationArea = document.getElementById('notification-area');
         const zoneNameEl = document.getElementById('zone-name');
         const zoneTimerEl = document.getElementById('zone-timer');
@@ -250,6 +290,41 @@
             currentZoneIndex = 0;
             eventActive = false;
             character.classList.remove('fallen');
+
+            // --- VISTE AL PERSONAJE Y ACTUALIZA LA UI ---
+            charEppContainer.innerHTML = '';
+            selectedEppsUI.innerHTML = '';
+            selectedEPPs.forEach(eppId => {
+                // Añade EPP visual al personaje
+                if (eppId === 'auditiva') {
+                    ['left', 'right'].forEach(side => {
+                        const eppEl = document.createElement('div');
+                        eppEl.className = `epp-on-char auditiva ${side}`;
+                        charEppContainer.appendChild(eppEl);
+                    });
+                } else if (eppId === 'botas') {
+                     ['left', 'right'].forEach(side => {
+                        const eppEl = document.createElement('div');
+                        eppEl.className = `epp-on-char botas ${side}`;
+                        charEppContainer.appendChild(eppEl);
+                    });
+                } else if (eppId !== 'guantes') { // Guantes no tienen visual por simplicidad
+                    const eppEl = document.createElement('div');
+                    eppEl.className = `epp-on-char ${eppId}`;
+                    charEppContainer.appendChild(eppEl);
+                }
+
+                // Añade ícono a la UI del juego
+                const eppData = EPP_DATA.find(e => e.id === eppId);
+                if (eppData) {
+                    const iconEl = document.createElement('div');
+                    iconEl.className = 'bg-slate-900/50 p-2 rounded-lg text-3xl backdrop-blur-sm';
+                    iconEl.textContent = eppData.icon;
+                    selectedEppsUI.appendChild(iconEl);
+                }
+            });
+            // --- FIN DE LA ACTUALIZACIÓN VISUAL ---
+
             showScreen('game');
             loadZone();
             gameInterval = setInterval(gameLoop, 1000);
@@ -297,11 +372,20 @@
         
         const triggerEvent = (event) => {
             eventActive = true;
-            showNotification(event.name, '#f97316'); // orange-500
+            showNotification(event.name, '#f97316'); // Muestra el nombre del evento
+
+            // Muestra la visualización del evento
+            eventVisualizationArea.innerHTML = '';
+            const iconEl = document.createElement('div');
+            iconEl.className = 'event-icon';
+            iconEl.textContent = event.icon;
+            eventVisualizationArea.appendChild(iconEl);
             
             setTimeout(() => {
+                if (gameState !== 'playing') return; 
+
                 if (selectedEPPs.has(event.requiredEPP)) {
-                    showNotification('¡Evento Completado!', '#22c55e'); // green-500
+                    showNotification('¡Evento Completado!', '#22c55e');
                     eventActive = false;
                 } else {
                     failGame(event);
@@ -310,7 +394,7 @@
         };
         
         const showNotification = (text, color) => {
-            notificationArea.innerHTML = ''; // Clear previous
+            notificationArea.innerHTML = ''; 
             const notif = document.createElement('div');
             notif.className = 'notification';
             notif.textContent = text;
@@ -336,9 +420,34 @@
              showScreen('win');
         };
 
+        const downloadCertificatePDF = () => {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            const userName = nameInput.value || "Trabajador Ejemplar";
+            const completionDate = new Date().toLocaleDateString('es-ES');
+
+            doc.setFontSize(22);
+            doc.text("Certificado de Finalización", 105, 25, null, null, 'center');
+            doc.setFontSize(16);
+            doc.text("Mina Segura Corp.", 105, 40, null, null, 'center');
+            doc.setFontSize(12);
+            doc.text("Se certifica que:", 105, 70, null, null, 'center');
+            doc.setFontSize(26);
+            doc.setFont('helvetica', 'bold');
+            doc.text(userName, 105, 90, null, null, 'center');
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(12);
+            doc.text("ha completado exitosamente el entrenamiento de seguridad en EPP.", 105, 110, null, null, 'center');
+            doc.text(`Fecha: ${completionDate}`, 105, 130, null, null, 'center');
+
+            doc.save(`certificado-${userName.replace(/ /g, '_')}.pdf`);
+        };
+
         const resetGame = () => {
             gameState = 'start';
             selectedEPPs.clear();
+            charEppContainer.innerHTML = '';
+            selectedEppsUI.innerHTML = '';
             showScreen('start');
         }
 
@@ -352,6 +461,7 @@
         });
         document.getElementById('restart-button').addEventListener('click', resetGame);
         document.getElementById('play-again-button').addEventListener('click', resetGame);
+        document.getElementById('download-cert-button').addEventListener('click', downloadCertificatePDF);
         nameInput.addEventListener('input', (e) => {
             certNameEl.textContent = e.target.value || "...";
         });
