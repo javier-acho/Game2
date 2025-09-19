@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demo - Simulador de Seguridad Minera</title>
+    <style>
+        /* Estilos generales del cuerpo de la página */
+        body {
+            background-color: #1e272e; /* Azul oscuro/grisáceo */
+            color: #d2dae2;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+            min-height: 100vh;
+        }
+
+        /* Contenedor principal del juego */
+        .game-container {
+            width: 100%;
+            max-width: 1024px;
+            margin: auto;
+            display: none; /* Oculto hasta que se complete el registro */
+        }
+
+        h1 {
+            color: #f1c40f; /* Color dorado para el título */
+            text-shadow: 2px 2px 4px #000;
+        }
+
+        /* Estilo del canvas donde se dibuja el juego */
+        canvas {
+            background-color: #34495e; /* Azul grisáceo más claro */
+            border: 5px solid #f1c40f;
+            border-radius: 15px;
+            box-shadow: 0 0 25px rgba(241, 196, 15, 0.5);
+            cursor: pointer;
+            width: 100%;
+            height: auto;
+        }
+
+        /* Estilo para la caja de texto del mentor */
+        #mentorFeedback {
+            margin-top: 15px;
+            font-size: 1.3em;
+            font-style: italic;
+            background-color: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 10px;
+            min-height: 50px;
+            border-left: 5px solid #f1c40f;
+        }
+        
+        /* Contenedor para la puntuación y logros */
+        #statsContainer {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            max-width: 1024px;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+
+        #achievementsList {
+            text-align: right;
+        }
+        
+        /* Formulario de registro */
+        #registrationForm {
+            background-color: #34495e;
+            padding: 30px;
+            border-radius: 15px;
+            border: 5px solid #f1c40f;
+            box-shadow: 0 0 25px rgba(241, 196, 15, 0.5);
+            width: 100%;
+            max-width: 500px;
+        }
+
+        #registrationForm h2 {
+            color: #f1c40f;
+            margin-top: 0;
+        }
+
+        #registrationForm input, #registrationForm select {
+            width: calc(100% - 20px);
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+            border: 1px solid #7f8c8d;
+            background-color: #d2dae2;
+            font-size: 1em;
+        }
+
+        #registrationForm button {
+            width: 100%;
+            padding: 15px;
+            background-color: #f1c40f;
+            color: #1e272e;
+            border: none;
+            border-radius: 5px;
+            font-size: 1.2em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        #registrationForm button:hover {
+            background-color: #ffdd59;
+        }
+
+
+        /* Animación de vibración para errores */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-8px); }
+            20%, 40%, 60%, 80% { transform: translateX(8px); }
+        }
+
+        .shake-animation {
+            animation: shake 0.5s linear;
+        }
+
+        /* Clases para imprimir el certificado */
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            #printableCertificate, #printableCertificate * {
+                visibility: visible;
+            }
+            #printableCertificate {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+            }
+        }
+        #printableCertificate {
+            display: none;
+        }
+
+    </style>
+</head>
+<body>
+    <div id="registrationForm">
+        <h2>Crear Perfil de Jugador</h2>
+        <input type="text" id="playerName" placeholder="Ingresa tu nombre completo" required>
+        <select id="playerGender">
+            <option value="hombre">Hombre</option>
+            <option value="mujer">Mujer</option>
+        </select>
+        <button id="startGameBtn">Empezar Simulación</button>
+    </div>
+
+    <div class="game-container">
+        <h1>Simulador de Seguridad Minera</h1>
+        
+        <div id="statsContainer">
+            <div id="score">Puntaje: 0</div>
+            <div id="achievementsList">Logros: Ninguno</div>
+        </div>
+
+        <canvas id="gameCanvas" width="1024" height="600"></canvas>
+        
+        <p id="mentorFeedback">¡Bienvenido! Haz clic en la pantalla para comenzar.</p>
+    </div>
+    
+    <img id="printableCertificate" src="" alt="Certificado de Finalización">
+
+    <script>
+        // Versión: Demo1
+        // --- CONFIGURACIÓN INICIAL DEL JUEGO ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const mentorFeedbackElement = document.getElementById('mentorFeedback');
+        const scoreElement = document.getElementById('score');
+        const achievementsListElement = document.getElementById('achievementsList');
+        const registrationForm = document.getElementById('registrationForm');
+        const gameContainer = document.querySelector('.game-container');
+        const startGameBtn = document.getElementById('startGameBtn');
+
+        // Estado del juego
+        let gameState = 'register'; // 'register', 'start', 'menu', 'scenario', 'result', 'certificate', 'end'
+        let currentScenario = null;
+        let scenarios = {};
+        let score = 0;
+        let achievements = [];
+        let completedAreas = [];
+        let mousePos = { x: 0, y: 0 };
+        let currentCertificateData = {};
+
+        const userProfile = {
+            name: '',
+            gender: 'hombre'
+        };
+        
+        // Objeto del personaje
+        const character = {
+            x: canvas.width / 2,
+            y: 400,
+            headDirection: 'center' // 'center', 'left', 'right'
+        };
+
+        // --- UTILIDADES DE DIBUJO ---
+        function drawText(text, x, y, size = 36, color = 'white', align = 'center', maxWidth = canvas.width - 40, font = 'Segoe UI') {
+            ctx.font = `bold ${size}px '${font}'`;
+            ctx.fillStyle = color;
+            ctx.textAlign = align;
+            ctx.fillText(text, x, y, maxWidth);
+        }
+
+        function drawButton(text, x, y, width, height, color = '#f1c40f', hover = false) {
+            const cornerRadius = 10;
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
+            ctx.shadowBlur = 10;
+            ctx.shadowOffsetX = 5;
+            ctx.shadowOffsetY = 5;
+
+            ctx.fillStyle = hover ? '#ffdd59' : color;
+            ctx.beginPath();
+            ctx.moveTo(x + cornerRadius, y);
+            ctx.lineTo(x + width - cornerRadius, y);
+            ctx.quadraticCurveTo(x + width, y, x + width, y + cornerRadius);
+            ctx.lineTo(x + width, y + height - cornerRadius);
+            ctx.quadraticCurveTo(x + width, y + height, x + width - cornerRadius, y + height);
+            ctx.lineTo(x + cornerRadius, y + height);
+            ctx.quadraticCurveTo(x, y + height, x, y + height - cornerRadius);
+            ctx.lineTo(x, y + cornerRadius);
+            ctx.quadraticCurveTo(x, y, x + cornerRadius, y);
+            ctx.closePath();
+            ctx.fill();
+            
+            ctx.shadowColor = 'transparent';
+            
+            drawText(text, x + width / 2, y + height / 2 + 10, 24, '#1e272e', 'center', width - 20);
+            return { x, y, width, height };
+        }
+        
+        function drawCharacter() {
+            const x = character.x;
+            const y = character.y;
+            
+            // Cuerpo
+            ctx.fillStyle = '#2c3e50'; // Azul oscuro
+            ctx.fillRect(x - 35, y, 70, 100);
+            
+            // Chaleco reflectante (cambia de color según el género)
+            if (userProfile.gender === 'mujer') {
+                ctx.fillStyle = '#ffb8b8'; // Rosa pastel para el chaleco femenino
+            } else {
+                ctx.fillStyle = '#e67e22'; // Naranja para el chaleco masculino
+            }
+            ctx.fillRect(x - 35, y, 70, 50);
+            ctx.fillStyle = '#bdc3c7'; // Plata reflectante
+            ctx.fillRect(x - 35, y + 20, 70, 10);
+
+            // Cabeza (ahora es igual para ambos géneros)
+            ctx.fillStyle = '#e0ac69'; // Tono de piel estándar
+            ctx.beginPath();
+            ctx.arc(x, y - 40, 30, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Casco
+            ctx.fillStyle = '#f1c40f'; // Amarillo
+            ctx.beginPath();
+            ctx.arc(x, y - 40, 30, Math.PI, Math.PI * 2);
+            ctx.fill();
+            // Lámpara del casco
+            ctx.fillStyle = '#ecf0f1';
+            ctx.beginPath();
+            ctx.arc(x, y - 65, 8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#7f8c8d';
+            ctx.fillRect(x - 10, y - 70, 20, 5);
+
+            // Ojos según la dirección
+            ctx.fillStyle = 'black';
+            let eyeXOffset = 0;
+            if (character.headDirection === 'left') eyeXOffset = -8;
+            else if (character.headDirection === 'right') eyeXOffset = 8;
+            
+            ctx.beginPath();
+            ctx.arc(x - 10 + eyeXOffset, y - 45, 3, 0, Math.PI * 2); // Ojo izquierdo
+            ctx.arc(x + 10 + eyeXOffset, y - 45, 3, 0, Math.PI * 2); // Ojo derecho
+            ctx.fill();
+        }
+
+        // --- PANTALLAS PRINCIPALES DEL JUEGO ---
+        function drawStartScreen() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawText('Simulador de Seguridad Minera', canvas.width / 2, canvas.height / 2 - 50, 50, '#f1c40f');
+            drawText('Haz clic para comenzar', canvas.width / 2, canvas.height / 2 + 20, 30);
+        }
+
+        function drawMenu() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawText('Selección de Módulo de Entrenamiento', canvas.width / 2, 80, 45, '#f1c40f');
+            
+            const btnWidth = 450, btnHeight = 70;
+            const centerX = canvas.width / 2 - btnWidth / 2;
+            
+            scenarios.buttons = {
+                mina: drawButton('Mina Subterránea Vetiforme', centerX, 180, btnWidth, btnHeight, '#f1c40f', isMouseOverButton(mousePos, {x: centerX, y: 180, width: btnWidth, height: btnHeight})),
+                taller: drawButton('Taller de Mantenimiento', centerX, 290, btnWidth, btnHeight, '#f1c40f', isMouseOverButton(mousePos, {x: centerX, y: 290, width: btnWidth, height: btnHeight})),
+                planta: drawButton('Planta de Proceso', centerX, 400, btnWidth, btnHeight, '#f1c40f', isMouseOverButton(mousePos, {x: centerX, y: 400, width: btnWidth, height: btnHeight}))
+            };
+            
+            mentorFeedbackElement.textContent = `Bienvenido/a, ${userProfile.name}. Elige un módulo para empezar.`;
+        }
+        
+        function drawCertificate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // Fondo del certificado
+            ctx.fillStyle = '#f5f6fa';
+            ctx.fillRect(50, 50, canvas.width - 100, canvas.height - 100);
+            
+            // Borde dorado
+            ctx.strokeStyle = '#f1c40f';
+            ctx.lineWidth = 10;
+            ctx.strokeRect(60, 60, canvas.width - 120, canvas.height - 120);
+
+            // Contenido
+            drawText('Certificado de Finalización', canvas.width / 2, 130, 50, '#1e272e');
+            drawText('Este certificado se otorga a:', canvas.width / 2, 200, 25, '#57606f');
+            
+            // Nombre del jugador
+            drawText(currentCertificateData.name, canvas.width / 2, 260, 45, '#e67e22', 'center', canvas.width - 200, 'serif');
+
+            drawText('Por completar exitosamente el módulo de:', canvas.width / 2, 320, 25, '#57606f');
+            drawText(currentCertificateData.area, canvas.width / 2, 370, 35, '#2c3e50');
+
+            drawText(`Fecha: ${currentCertificateData.date}`, canvas.width / 2, 430, 20, '#57606f');
+            
+            // Placeholder para logo
+            drawText('LOGO EMPRESA', 180, 480, 20, '#bdc3c7');
+            
+            // Botones de acción
+            const btnY = canvas.height - 80;
+            const btnWidth = 200;
+            currentCertificateData.buttons = {
+                save: drawButton('Guardar como PDF', 100, btnY, btnWidth, 50),
+                print: drawButton('Imprimir', 100 + btnWidth + 20, btnY, btnWidth, 50),
+                back: drawButton('Volver al Menú', canvas.width - 100 - btnWidth, btnY, btnWidth, 50)
+            };
+        }
+        
+        function drawEndScreen() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = 'rgba(30, 39, 46, 0.9)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            drawText('Fin de la Simulación', canvas.width / 2, 80, 50, '#f1c40f');
+            drawText(`Puntaje Final: ${score}`, canvas.width / 2, 160, 40);
+
+            drawText('Logros Desbloqueados:', canvas.width / 2, 240, 35);
+            if (achievements.length > 0) {
+                achievements.forEach((ach, index) => {
+                    drawText(`- ${ach}`, canvas.width / 2, 300 + index * 40, 30, '#d2dae2');
+                });
+            } else {
+                 drawText('Ninguno', canvas.width / 2, 300, 30, '#d2dae2');
+            }
+            
+            mentorFeedbackElement.innerHTML = `<strong>Mentor:</strong> La seguridad no es un juego, pero aprender jugando puede salvarte la vida real.`;
+            const restartBtnRect = {x: canvas.width / 2 - 150, y: canvas.height - 100, width: 300, height: 60};
+            drawButton('Reiniciar Simulación', restartBtnRect.x, restartBtnRect.y, restartBtnRect.width, restartBtnRect.height, '#f1c40f', isMouseOverButton(mousePos, restartBtnRect));
+        }
+
+        function drawResultScreen(isSuccess, feedback, achievement = null) {
+            const title = isSuccess ? '¡DECISIÓN CORRECTA!' : '¡RIESGO DETECTADO!';
+            const color = isSuccess ? '#27ae60' : '#c03c2b';
+            
+            ctx.fillStyle = color;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            drawText(title, canvas.width / 2, canvas.height / 2 - 50, 60);
+
+            if (isSuccess) {
+                score += 100;
+                if (achievement && !achievements.includes(achievement)) {
+                    achievements.push(achievement);
+                    drawText(`¡Logro desbloqueado: ${achievement}!`, canvas.width / 2, canvas.height / 2 + 50, 30);
+                }
+            } else {
+                canvas.classList.add('shake-animation');
+                setTimeout(() => canvas.classList.remove('shake-animation'), 500);
+            }
+            updateStats();
+            
+            mentorFeedbackElement.textContent = `Mentor: ${feedback}`;
+            
+            setTimeout(() => {
+                if (isSuccess) {
+                    completedAreas.push(currentScenario.area);
+                    const areaNames = {mina1: "Mina Subterránea", taller2: "Taller de Mantenimiento", planta3: "Planta de Proceso"};
+                    currentCertificateData = {
+                        name: userProfile.name,
+                        area: areaNames[currentScenario.id],
+                        date: new Date().toLocaleDateString('es-ES')
+                    };
+                    gameState = 'certificate';
+                } else {
+                    gameState = 'menu';
+                }
+
+                if (completedAreas.length === 3) {
+                    gameState = 'end';
+                }
+                requestAnimationFrame(gameLoop);
+            }, 4000);
+        }
+
+        // --- DEFINICIÓN DE ESCENARIOS ---
+        function loadScenarios() {
+            scenarios.mina_inspeccion = {
+                id: 'mina1',
+                area: 'mina',
+                title: "Ingreso a la Mina",
+                description: "El capataz te indica que lo sigas de inmediato para empezar el trabajo. El terreno parece inestable.",
+                options: [ { text: "Inspeccionar el terreno primero", correct: true }, { text: "Seguir al capataz sin dudar", correct: false } ],
+                feedbackCorrect: "Nunca confíes sin verificar. La inspección salva vidas. ¡Bien hecho!",
+                feedbackIncorrect: "¡Hundimiento parcial! Caíste en una zanja. Siempre inspecciona tu área de trabajo.",
+            };
+            scenarios.taller_esmeril = {
+                id: 'taller2',
+                area: 'taller',
+                title: "Uso de Esmeril",
+                description: "Necesitas hacer un corte con el esmeril angular.",
+                options: [ { text: "Colocarse las gafas de seguridad", correct: true }, { text: "Proceder sin gafas para ir más rápido", correct: false } ],
+                feedbackCorrect: "El Equipo de Protección Personal (EPP) no es opcional. Has evitado una lesión grave.",
+                feedbackIncorrect: "¡Corte ocular! Una esquirla te ha golpeado. El EPP te habría protegido.",
+                achievement: "Defensor del Ojo Humano",
+            };
+            scenarios.planta_gases = {
+                id: 'planta3',
+                area: 'planta',
+                title: "Sala de Tanques de Solución",
+                description: "Debes entrar a la sala de tanques. No hay olores extraños, pero es un área de riesgo químico.",
+                options: [ { text: "Usar el medidor de atmósfera", correct: true }, { text: "Entrar directamente a la sala", correct: false } ],
+                feedbackCorrect: "Detectaste vapores tóxicos invisibles con el medidor. ¡El monitoreo previo es vital!",
+                feedbackIncorrect: "Inhalación de vapores químicos. Los riesgos más peligrosos son los que no se ven.",
+                achievement: "Guardián del Aire",
+            };
+        }
+
+        function drawScenario(scenario) {
+            currentScenario = scenario;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            drawText(scenario.title, canvas.width / 2, 80, 45, '#f1c40f');
+            drawText(scenario.description, canvas.width / 2, 160, 28);
+            drawCharacter();
+
+            const btnWidth = 350, btnHeight = 100;
+            const yPos = 400;
+            const gap = 50;
+            
+            currentScenario.buttons = {
+                left: drawButton(scenario.options[0].text, canvas.width / 2 - btnWidth - gap, yPos, btnWidth, btnHeight, '#f1c40f', isMouseOverButton(mousePos, {x: canvas.width / 2 - btnWidth - gap, y: yPos, width: btnWidth, height: btnHeight})),
+                right: drawButton(scenario.options[1].text, canvas.width / 2 + gap, yPos, btnWidth, btnHeight, '#f1c40f', isMouseOverButton(mousePos, {x: canvas.width / 2 + gap, y: yPos, width: btnWidth, height: btnHeight}))
+            };
+
+            mentorFeedbackElement.textContent = "Mentor: Analiza la situación y toma la decisión más segura.";
+        }
+        
+        // --- LÓGICA DE INTERACCIÓN ---
+        function getMousePos(evt) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            return { x: (evt.clientX - rect.left) * scaleX, y: (evt.clientY - rect.top) * scaleY };
+        }
+        
+        function isMouseOverButton(pos, button) {
+            if (!button) return false;
+            return pos.x > button.x && pos.x < button.x + button.width && pos.y > button.y && pos.y < button.y + button.height;
+        }
+        
+        function printCertificate() {
+            const dataUrl = canvas.toDataURL('image/png');
+            const certificateImg = document.getElementById('printableCertificate');
+            certificateImg.src = dataUrl;
+            
+            // Forzar un pequeño retraso para asegurar que la imagen se cargue en el DOM antes de imprimir
+            setTimeout(() => {
+                window.print();
+            }, 100);
+        }
+
+        function handleCanvasClick(event) {
+            const pos = getMousePos(event);
+
+            if (gameState === 'start') gameState = 'menu';
+            else if (gameState === 'menu') {
+                if (isMouseOverButton(pos, scenarios.buttons.mina) && !completedAreas.includes('mina')) {
+                    gameState = 'scenario'; currentScenario = scenarios.mina_inspeccion;
+                } else if (isMouseOverButton(pos, scenarios.buttons.taller) && !completedAreas.includes('taller')) {
+                    gameState = 'scenario'; currentScenario = scenarios.taller_esmeril;
+                } else if (isMouseOverButton(pos, scenarios.buttons.planta) && !completedAreas.includes('planta')) {
+                    gameState = 'scenario'; currentScenario = scenarios.planta_gases;
+                }
+            } else if (gameState === 'scenario') {
+                if (isMouseOverButton(pos, currentScenario.buttons.left)) {
+                    const opt = currentScenario.options[0];
+                    gameState = 'result';
+                    drawResultScreen(opt.correct, opt.correct ? currentScenario.feedbackCorrect : currentScenario.feedbackIncorrect, currentScenario.achievement);
+                } else if (isMouseOverButton(pos, currentScenario.buttons.right)) {
+                    const opt = currentScenario.options[1];
+                    gameState = 'result';
+                    drawResultScreen(opt.correct, opt.correct ? currentScenario.feedbackCorrect : currentScenario.feedbackIncorrect, currentScenario.achievement);
+                }
+            } else if (gameState === 'certificate') {
+                 if (isMouseOverButton(pos, currentCertificateData.buttons.save) || isMouseOverButton(pos, currentCertificateData.buttons.print)) {
+                    printCertificate();
+                } else if (isMouseOverButton(pos, currentCertificateData.buttons.back)) {
+                    gameState = 'menu';
+                }
+            }
+            else if (gameState === 'end') {
+                 const restartButton = {x: canvas.width / 2 - 150, y: canvas.height - 100, width: 300, height: 60};
+                 if(isMouseOverButton(pos, restartButton)) resetGame();
+            }
+
+            if (gameState !== 'result') requestAnimationFrame(gameLoop);
+        }
+
+        function handleCanvasMouseMove(event) {
+            mousePos = getMousePos(event);
+            if (gameState === 'scenario') {
+                if (isMouseOverButton(mousePos, currentScenario.buttons.left)) character.headDirection = 'left';
+                else if (isMouseOverButton(mousePos, currentScenario.buttons.right)) character.headDirection = 'right';
+                else character.headDirection = 'center';
+            }
+            if (gameState !== 'result') requestAnimationFrame(gameLoop);
+        }
+        
+        function updateStats(){
+            scoreElement.textContent = `Puntaje: ${score}`;
+            achievementsListElement.textContent = achievements.length > 0 ? `Logros: ${achievements.join(', ')}` : 'Logros: Ninguno';
+        }
+
+        function resetGame() {
+            score = 0;
+            achievements = [];
+            completedAreas = [];
+            gameState = 'menu';
+            updateStats();
+        }
+
+        // --- INICIO DEL JUEGO Y REGISTRO ---
+        function handleRegistration() {
+            const playerNameInput = document.getElementById('playerName');
+            const playerGenderSelect = document.getElementById('playerGender');
+            
+            if (playerNameInput.value.trim() === '') {
+                alert('Por favor, ingresa tu nombre para continuar.');
+                return;
+            }
+            
+            userProfile.name = playerNameInput.value.trim();
+            userProfile.gender = playerGenderSelect.value;
+            
+            registrationForm.style.display = 'none';
+            gameContainer.style.display = 'block';
+            
+            gameState = 'start';
+            requestAnimationFrame(gameLoop);
+        }
+
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (gameState === 'start') drawStartScreen();
+            else if (gameState === 'menu') drawMenu();
+            else if (gameState === 'scenario') drawScenario(currentScenario);
+            else if (gameState === 'certificate') drawCertificate();
+            else if (gameState === 'end') drawEndScreen();
+        }
+
+        loadScenarios();
+        canvas.addEventListener('click', handleCanvasClick);
+        canvas.addEventListener('mousemove', handleCanvasMouseMove);
+        startGameBtn.addEventListener('click', handleRegistration);
+        
+        // No iniciar el bucle del juego hasta que se complete el registro.
+    </script>
+</body>
+</html>
+
